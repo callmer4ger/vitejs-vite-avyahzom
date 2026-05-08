@@ -9,12 +9,17 @@ import {
   AlertCircle, 
   Trash2,
   ExternalLink,
-  Scissors
+  Scissors,
+  LogOut,
+  Mail,
+  Lock,
+  Loader2
 } from 'lucide-react';
 import { format, differenceInDays, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { supabase } from './supabase';
 
 // Utility for Tailwind classes
 function cn(...inputs: ClassValue[]) {
@@ -33,31 +38,76 @@ const STORAGE_KEY = 'barber_recover_clients';
 const RECOVERY_THRESHOLD_DAYS = 20;
 
 export default function App() {
+  const [session, setSession] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
   const [clients, setClients] = useState<Client[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Form State
+  // Form State for new client
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [newDate, setNewDate] = useState(format(new Date(), 'yyyy-MM-dd'));
 
-  // Load data
+  // Auth Listener
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        setClients(JSON.parse(saved));
-      } catch (e) {
-        console.error("Failed to load clients", e);
-      }
-    }
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  // Save data
+  // Load client data
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(clients));
-  }, [clients]);
+    if (session) {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        try {
+          setClients(JSON.parse(saved));
+        } catch (e) {
+          console.error("Failed to load clients", e);
+        }
+      }
+    }
+  }, [session]);
+
+  // Save client data
+  useEffect(() => {
+    if (session) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(clients));
+    }
+  }, [clients, session]);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoggingIn(true);
+    setLoginError('');
+    
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      setLoginError('E-mail ou senha incorretos.');
+    }
+    setIsLoggingIn(false);
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
 
   const addClient = (e: React.FormEvent) => {
     e.preventDefault();
@@ -126,6 +176,83 @@ export default function App() {
     };
   };
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-amber-500 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!session) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] text-stone-100 flex items-center justify-center p-4">
+        <div className="w-full max-w-md space-y-8">
+          <div className="flex flex-col items-center text-center">
+            <div className="w-16 h-16 bg-amber-500 rounded-2xl flex items-center justify-center shadow-2xl shadow-amber-500/20 mb-6">
+              <Scissors className="text-black w-8 h-8" />
+            </div>
+            <h1 className="text-3xl font-bold tracking-tight">Recuperador <span className="text-amber-500">Barber Pro</span></h1>
+            <p className="text-stone-500 mt-2">Acesse sua conta para gerenciar seus clientes.</p>
+          </div>
+
+          <div className="bg-[#141414] border border-white/5 p-8 rounded-3xl shadow-xl">
+            <form onSubmit={handleLogin} className="space-y-6">
+              {loginError && (
+                <div className="bg-red-500/10 border border-red-500/20 text-red-500 text-sm p-4 rounded-xl flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4" />
+                  {loginError}
+                </div>
+              )}
+              
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-stone-500 uppercase ml-1">E-mail</label>
+                <div className="relative">
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-500" />
+                  <input 
+                    required
+                    type="email" 
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    placeholder="seu@email.com"
+                    className="w-full bg-stone-900 border border-white/5 rounded-xl pl-11 pr-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500/50 transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-stone-500 uppercase ml-1">Senha</label>
+                <div className="relative">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-500" />
+                  <input 
+                    required
+                    type="password" 
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-stone-900 border border-white/5 rounded-xl pl-11 pr-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500/50 transition-all"
+                  />
+                </div>
+              </div>
+
+              <button 
+                disabled={isLoggingIn}
+                type="submit" 
+                className="w-full bg-amber-500 hover:bg-amber-400 disabled:bg-amber-800 disabled:text-stone-500 text-black py-4 rounded-xl font-bold transition-all active:scale-[0.98] shadow-lg shadow-amber-500/10 flex items-center justify-center gap-2"
+              >
+                {isLoggingIn ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Entrar na Dashboard'}
+              </button>
+            </form>
+          </div>
+          
+          <p className="text-center text-sm text-stone-600">
+            Ainda não tem conta? <span className="text-amber-500 cursor-help underline decoration-amber-500/30">Fale com o suporte</span>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-stone-100 font-sans selection:bg-amber-500/30">
       {/* Header */}
@@ -135,19 +262,28 @@ export default function App() {
             <div className="w-10 h-10 bg-amber-500 rounded-lg flex items-center justify-center shadow-lg shadow-amber-500/20">
               <Scissors className="text-black w-6 h-6" />
             </div>
-            <div>
+            <div className="hidden sm:block">
               <h1 className="text-xl font-bold tracking-tight">Recuperador <span className="text-amber-500">Barber Pro</span></h1>
               <p className="text-xs text-stone-500 uppercase tracking-widest font-semibold">Dashboard do Barbeiro</p>
             </div>
           </div>
           
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-black px-4 py-2.5 rounded-full font-bold transition-all active:scale-95 shadow-lg shadow-amber-500/10"
-          >
-            <UserPlus className="w-4 h-4" />
-            <span>Novo Cliente</span>
-          </button>
+          <div className="flex items-center gap-2 sm:gap-4">
+            <button 
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-black px-4 py-2 rounded-full font-bold transition-all active:scale-95 shadow-lg shadow-amber-500/10 text-sm"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span className="hidden sm:inline">Novo Cliente</span>
+            </button>
+            <button 
+              onClick={handleLogout}
+              className="p-2 text-stone-500 hover:text-red-500 transition-colors"
+              title="Sair"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
+          </div>
         </div>
       </header>
 
@@ -260,7 +396,7 @@ export default function App() {
                             )}
                           >
                             <MessageSquare className="w-3.5 h-3.5" />
-                            <span>WhatsApp</span>
+                            <span className="hidden xs:inline">WhatsApp</span>
                             <ExternalLink className="w-3 h-3 opacity-50" />
                           </a>
                           <button 
@@ -292,7 +428,7 @@ export default function App() {
         <div className="flex flex-col items-center gap-4 text-stone-600 text-sm">
           <p>© {new Date().getFullYear()} Recuperador Barber Pro. Sistema Premium de Gestão.</p>
           <div className="flex items-center gap-6">
-            <span className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500" /> Sistema Ativo</span>
+            <span className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500" /> Logado como {session.user.email}</span>
             <span className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-amber-500" /> Local Storage habilitado</span>
           </div>
         </div>
