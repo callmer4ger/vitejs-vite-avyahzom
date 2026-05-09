@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Users, UserPlus, MessageSquare, Search, Trash2, 
   Scissors, LogOut, Loader2, RefreshCw, CheckSquare, 
-  Square, User as UserIcon, TrendingUp, Wallet, AlertCircle
+  Square, User as UserIcon, TrendingUp, Wallet
 } from 'lucide-react';
 import { format, differenceInDays, parseISO, startOfDay, subDays } from 'date-fns';
 import { supabase } from './lib/supabase';
@@ -17,7 +17,6 @@ export default function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [userName, setUserName] = useState('');
-  const [loginError, setLoginError] = useState('');
   const [clients, setClients] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -59,17 +58,16 @@ export default function App() {
   };
 
   const updateProfile = async () => {
-    if (!userName.trim()) { alert("Digite um nome!"); return; }
-    if (!session) return;
+    if (!userName.trim() || !session) return;
     
+    // Agora salvando APENAS o nome para evitar erros de colunas extras
     const { error } = await supabase.from('profiles').upsert({ 
       id: session.user.id, 
-      full_name: userName.trim(),
-      updated_at: new Date().toISOString()
+      full_name: userName.trim()
     });
 
     if (error) {
-      alert("Erro do Supabase: " + error.message);
+      alert("Erro ao salvar: " + error.message);
     } else {
       setIsProfileModalOpen(false);
       setUserName(userName.trim());
@@ -108,13 +106,13 @@ export default function App() {
     <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6 text-white font-sans">
       <div className="w-full max-w-sm space-y-8">
         <div className="text-center">
-          <div className="w-16 h-16 bg-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-amber-500/20"><Scissors className="text-black" /></div>
-          <h1 className="text-3xl font-black italic tracking-tighter">BARBER <span className="text-amber-500">PRO</span></h1>
+          <div className="w-16 h-16 bg-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-4"><Scissors className="text-black" /></div>
+          <h1 className="text-3xl font-black italic tracking-tighter uppercase">BARBER <span className="text-amber-500">PRO</span></h1>
         </div>
-        <form onSubmit={(e) => { e.preventDefault(); supabase.auth.signInWithPassword({ email, password }).catch(() => setLoginError('Erro')); }} className="bg-zinc-900/50 p-8 rounded-[2rem] border border-white/5 space-y-4">
+        <form onSubmit={(e) => { e.preventDefault(); supabase.auth.signInWithPassword({ email, password }); }} className="bg-zinc-900/50 p-8 rounded-[2rem] border border-white/5 space-y-4">
           <input required type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="E-mail" className="w-full bg-black border border-white/10 rounded-2xl p-4 outline-none focus:border-amber-500" />
           <input required type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Senha" className="w-full bg-black border border-white/10 rounded-2xl p-4 outline-none focus:border-amber-500" />
-          <button className="w-full bg-amber-500 text-black py-4 rounded-2xl font-black shadow-lg">ENTRAR</button>
+          <button className="w-full bg-amber-500 text-black py-4 rounded-2xl font-black uppercase">ENTRAR</button>
         </form>
       </div>
     </div>
@@ -133,6 +131,7 @@ export default function App() {
         <div className="flex gap-2">
           <button onClick={() => setIsSelectionMode(!isSelectionMode)} className={cn("p-2 rounded-lg", isSelectionMode ? "bg-amber-500 text-black" : "text-zinc-500")}><Trash2 size={20} /></button>
           <button onClick={() => setIsModalOpen(true)} className="bg-amber-500 text-black p-2 rounded-xl"><UserPlus size={20} /></button>
+          <button onClick={() => setIsProfileModalOpen(true)} className="p-2 text-zinc-500"><UserIcon size={20} /></button>
           <button onClick={() => supabase.auth.signOut()} className="text-zinc-600 ml-2"><LogOut size={20} /></button>
         </div>
       </header>
@@ -140,26 +139,26 @@ export default function App() {
       <main className="p-4 space-y-6 max-w-lg mx-auto">
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-zinc-900 border border-white/5 p-4 rounded-[2rem]">
-            <p className="text-[9px] text-zinc-500 font-bold uppercase">Clientes</p>
+            <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest">Clientes</p>
             <p className="text-2xl font-black">{stats.total}</p>
           </div>
           <div className="bg-zinc-900 border border-white/5 p-4 rounded-[2rem]">
-            <p className="text-[9px] text-red-500 font-bold uppercase">Recuperar</p>
+            <p className="text-[9px] text-red-500 font-bold uppercase tracking-widest">Recuperar</p>
             <p className="text-2xl font-black text-red-500">{stats.needsRecovery}</p>
           </div>
           <div className="bg-zinc-900 border border-white/5 p-4 rounded-[2rem]">
-            <p className="text-[9px] text-emerald-500 font-bold uppercase">Fidelidade</p>
+            <p className="text-[9px] text-emerald-500 font-bold uppercase tracking-widest">Fidelidade</p>
             <p className="text-2xl font-black text-emerald-500">{stats.fidelity}%</p>
           </div>
           <div className="bg-zinc-900 border border-emerald-500/20 p-4 rounded-[2rem]">
-            <p className="text-[9px] text-zinc-500 font-bold uppercase">Ganhos ({filterPeriod === 'month' ? 'Mês' : '7d'})</p>
-            <p className="text-2xl font-black text-emerald-500">R$ {stats.faturamento}</p>
+            <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest text-emerald-500">Ganhos (R$)</p>
+            <p className="text-2xl font-black text-emerald-500">{stats.faturamento}</p>
           </div>
         </div>
 
-        <div className="flex gap-2 overflow-x-auto pb-2">
+        <div className="flex gap-2 overflow-x-auto no-scrollbar">
           {['today', 'week', 'month'].map(p => (
-            <button key={p} onClick={() => setFilterPeriod(p)} className={cn("px-4 py-2 rounded-full text-[10px] font-black uppercase border", filterPeriod === p ? "bg-amber-500 border-amber-500 text-black" : "bg-zinc-900 border-white/5 text-zinc-500")}>
+            <button key={p} onClick={() => setFilterPeriod(p)} className={cn("px-4 py-2 rounded-full text-[10px] font-black uppercase border transition-all whitespace-nowrap", filterPeriod === p ? "bg-amber-500 border-amber-500 text-black" : "bg-zinc-900 border-white/5 text-zinc-500")}>
               {p === 'today' ? 'Hoje' : p === 'week' ? '7 Dias' : '30 Dias'}
             </button>
           ))}
@@ -173,10 +172,17 @@ export default function App() {
         <div className="space-y-3">
           {clients.filter(c => (c.name || '').toLowerCase().includes(searchTerm.toLowerCase())).map(c => {
             const days = differenceInDays(new Date(), parseISO(c.last_visit));
+            const isSel = selectedClients.includes(c.id);
             return (
-              <div key={c.id} className="bg-zinc-900/40 border border-white/5 rounded-[2rem] p-4 flex items-center justify-between">
+              <div key={c.id} className={cn("bg-zinc-900/40 border rounded-[2rem] p-4 flex items-center justify-between", isSel ? "border-amber-500" : "border-white/5")}>
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-zinc-800 rounded-full flex items-center justify-center text-amber-500 font-black">{c.name?.[0]}</div>
+                  {isSelectionMode ? (
+                    <button onClick={() => setSelectedClients(prev => isSel ? prev.filter(id => id !== c.id) : [...prev, c.id])}>
+                      {isSel ? <CheckSquare className="text-amber-500" /> : <Square className="text-zinc-700" />}
+                    </button>
+                  ) : (
+                    <div className="w-10 h-10 bg-zinc-800 rounded-full flex items-center justify-center text-amber-500 font-black">{c.name?.[0]?.toUpperCase()}</div>
+                  )}
                   <div>
                     <p className="font-black text-sm">{c.name}</p>
                     <p className="text-[10px] text-zinc-600 font-bold">R$ {c.price} • {c.services?.join(', ')}</p>
@@ -193,14 +199,14 @@ export default function App() {
         </div>
       </main>
 
-      {/* MODAL DE PERFIL - AGORA COM FEEDBACK DE ERRO */}
+      {/* MODAL DE PERFIL */}
       {isProfileModalOpen && (
-        <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-8 backdrop-blur-md">
+        <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-8 backdrop-blur-md text-white">
           <div className="bg-zinc-900 border border-white/10 w-full max-w-sm rounded-[2.5rem] p-10 text-center shadow-2xl">
-            <h3 className="text-2xl font-black mb-2 tracking-tight">COMO SE CHAMA?</h3>
+            <h3 className="text-2xl font-black mb-2 tracking-tight">SEU NOME</h3>
             <p className="text-zinc-500 text-[10px] mb-8 uppercase font-bold tracking-widest">Para personalizar sua dashboard</p>
-            <input autoFocus placeholder="Ex: Barbeiro" value={userName} onChange={e => setUserName(e.target.value)} className="w-full bg-black border border-white/10 rounded-2xl p-5 mb-6 text-center font-bold text-white outline-none focus:border-amber-500" />
-            <button onClick={updateProfile} className="w-full bg-amber-500 text-black py-5 rounded-2xl font-black text-sm uppercase active:scale-95 transition-all">SALVAR PERFIL</button>
+            <input autoFocus placeholder="Ex: Barbeiro" value={userName} onChange={e => setUserName(e.target.value)} className="w-full bg-black border border-white/10 rounded-2xl p-5 mb-6 text-center font-bold outline-none focus:border-amber-500" />
+            <button onClick={updateProfile} className="w-full bg-amber-500 text-black py-5 rounded-2xl font-black uppercase text-xs active:scale-95 transition-all">SALVAR PERFIL</button>
           </div>
         </div>
       )}
@@ -209,7 +215,7 @@ export default function App() {
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-zinc-900 border border-white/10 w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl">
-            <h3 className="text-xl font-black mb-6 text-center italic">NOVO CLIENTE</h3>
+            <h3 className="text-xl font-black mb-6 text-center italic tracking-tighter">NOVO CLIENTE</h3>
             <form onSubmit={addClient} className="space-y-4">
               <input required placeholder="Nome" value={newName} onChange={e => setNewName(e.target.value)} className="w-full bg-black border border-white/10 rounded-xl p-4 outline-none focus:border-amber-500" />
               <input required placeholder="WhatsApp" value={newPhone} onChange={e => setNewPhone(e.target.value)} className="w-full bg-black border border-white/10 rounded-xl p-4 outline-none focus:border-amber-500" />
@@ -223,8 +229,8 @@ export default function App() {
                 ))}
               </div>
               <div className="flex gap-3 pt-4">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 text-zinc-500 font-black">CANCELAR</button>
-                <button type="submit" className="flex-1 bg-amber-500 text-black py-4 rounded-xl font-black">SALVAR</button>
+                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 text-zinc-500 font-black uppercase text-xs">Sair</button>
+                <button type="submit" className="flex-1 bg-amber-500 text-black py-4 rounded-xl font-black uppercase text-xs">Salvar</button>
               </div>
             </form>
           </div>
