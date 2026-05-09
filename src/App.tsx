@@ -37,6 +37,13 @@ export default function App() {
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedClients, setSelectedClients] = useState<string[]>([]);
 
+  // Lógica para identificar se é Barbeiro ou Barbeira
+  const professionalTitle = useMemo(() => {
+    if (!userName) return 'Barbeiro';
+    const firstName = userName.trim().split(' ')[0].toLowerCase();
+    return firstName.endsWith('a') ? 'Barbeira' : 'Barbeiro';
+  }, [userName]);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -150,16 +157,16 @@ export default function App() {
     return { total, needsRecovery, faturamento, fidelity: total > 0 ? Math.round(((total - needsRecovery) / total) * 100) : 0 };
   }, [clients, filterPeriod]);
 
-  if (authLoading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center text-amber-500 font-black italic uppercase">Carregando...</div>;
+  if (authLoading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center text-amber-500 font-black italic uppercase">BARBER PRO...</div>;
 
   if (!session) return (
-    <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6 text-white">
+    <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6 text-white font-sans">
       <div className="w-full max-w-sm space-y-10">
         <div className="text-center space-y-4">
           <div className="w-20 h-20 bg-amber-500 rounded-[2rem] flex items-center justify-center mx-auto shadow-lg shadow-amber-500/20">
             <Scissors className="text-black w-10 h-10" />
           </div>
-          <h1 className="text-4xl font-black italic tracking-tighter">BARBER <span className="text-amber-500">PRO</span></h1>
+          <h1 className="text-4xl font-black italic tracking-tighter uppercase">BARBER <span className="text-amber-500">PRO</span></h1>
         </div>
         <form onSubmit={(e) => { e.preventDefault(); supabase.auth.signInWithPassword({ email, password }); }} className="bg-zinc-900 p-8 rounded-[2rem] border border-white/5 space-y-4 shadow-2xl">
           <input required type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="E-mail" className="w-full bg-black border border-white/10 rounded-2xl p-4 outline-none focus:border-amber-500" />
@@ -178,7 +185,7 @@ export default function App() {
             <UserIcon size={20} />
           </button>
           <div>
-            <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest leading-none mb-1">Barbeiro: {userName || '...'}</p>
+            <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest leading-none mb-1">{professionalTitle}: {userName || '...'}</p>
             <h1 className="text-lg font-black tracking-tighter italic leading-none">DASHBOARD <span className="text-amber-500">PREMIUM</span></h1>
           </div>
         </div>
@@ -197,7 +204,7 @@ export default function App() {
             <p className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] mb-2">Taxa de Retenção</p>
             <div className="flex items-end gap-3">
               <p className="text-6xl font-black text-amber-500 tracking-tighter">{stats.fidelity}%</p>
-              <p className="text-zinc-500 text-xs mb-2 font-bold italic underline decoration-amber-500/30">Fidelidade Pro</p>
+              <p className="text-zinc-500 text-xs mb-2 font-bold italic">Fidelidade Pro</p>
             </div>
           </div>
           
@@ -228,23 +235,19 @@ export default function App() {
               <option value="week">7 Dias</option>
               <option value="month">30 Dias</option>
               <option value="90days">90 Dias</option>
-              <option value="all">Faturamento Total</option>
+              <option value="all">Todo Período</option>
             </select>
             <ChevronDown size={14} className="absolute right-5 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
           </div>
         </div>
 
         <div className="space-y-4">
-          <div className="flex items-center justify-between px-2">
-            <h3 className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.3em]">Gestão de Retornos</h3>
-            <button onClick={() => setIsSelectionMode(!isSelectionMode)} className="text-[9px] font-black text-amber-500/50 uppercase tracking-widest hover:text-amber-500 transition-all">
+          <div className="flex items-center justify-between px-2 text-zinc-600">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.3em]">Gestão de Retornos</h3>
+            <button onClick={() => setIsSelectionMode(!isSelectionMode)} className="text-[9px] font-black uppercase tracking-widest hover:text-amber-500 transition-all">
               {isSelectionMode ? "Concluir" : "Excluir Vários"}
             </button>
           </div>
-
-          {isSelectionMode && selectedClients.length > 0 && (
-            <button onClick={() => deleteClients(selectedClients)} className="w-full bg-red-600/10 text-red-500 border border-red-500/20 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] animate-pulse mb-4">Confirmar Exclusão ({selectedClients.length})</button>
-          )}
 
           {clients.filter(c => (c.name || '').toLowerCase().includes(searchTerm.toLowerCase())).map(c => {
             const days = c.last_visit ? differenceInDays(new Date(), parseISO(c.last_visit)) : 0;
@@ -260,8 +263,8 @@ export default function App() {
                     <div className="w-12 h-12 bg-gradient-to-br from-zinc-800 to-zinc-900 border border-white/5 rounded-2xl flex items-center justify-center text-amber-500 font-black text-lg">{c.name?.[0]?.toUpperCase()}</div>
                   )}
                   <div>
-                    <p className="font-black text-base tracking-tight text-white/90">{c.name}</p>
-                    <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-tighter">R$ {c.price} • {c.services?.join(' + ') || 'Atendimento'}</p>
+                    <p className="font-black text-base tracking-tight text-white/90 leading-none">{c.name}</p>
+                    <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-tighter mt-1.5">R$ {c.price} • {c.services?.join(' + ') || 'Atendimento'}</p>
                   </div>
                 </div>
 
@@ -281,15 +284,15 @@ export default function App() {
         </div>
       </main>
 
-      {/* MODAL: RENOVAR / EDITAR */}
+      {/* MODAL: RENOVAR / EDITAR (Incluso Gênero e Serviços) */}
       {isRenewModalOpen && (
-        <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-6 backdrop-blur-2xl">
-          <div className="bg-zinc-900 border border-white/10 w-full max-w-md rounded-[3rem] p-10 shadow-3xl">
-             <div className="w-16 h-16 bg-emerald-500/10 text-emerald-500 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-emerald-500/10"><RefreshCw size={32} /></div>
-             <h3 className="text-2xl font-black mb-1 text-center tracking-tight">RENOVAR CLIENTE?</h3>
-             <p className="text-zinc-500 text-[10px] text-center mb-8 uppercase font-bold tracking-widest tracking-widest">Confirme os detalhes do serviço</p>
+        <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-6 backdrop-blur-2xl overflow-y-auto no-scrollbar">
+          <div className="bg-zinc-900 border border-white/10 w-full max-w-md rounded-[3rem] p-10 shadow-3xl my-auto">
+             <div className="w-16 h-16 bg-emerald-500/10 text-emerald-500 rounded-2xl flex items-center justify-center mx-auto mb-6"><RefreshCw size={32} /></div>
+             <h3 className="text-2xl font-black mb-1 text-center tracking-tight uppercase">Renovar Atendimento</h3>
+             <p className="text-zinc-500 text-[10px] text-center mb-8 uppercase font-bold tracking-widest leading-tight">Zerar o tempo e atualizar os serviços</p>
              
-             <form onSubmit={saveClient} className="space-y-4">
+             <form onSubmit={saveClient} className="space-y-4 text-left">
                 <div className="space-y-1">
                   <label className="text-[9px] font-black text-zinc-600 uppercase ml-2 tracking-widest">Nome do Cliente</label>
                   <input required value={newName} onChange={e => setNewName(e.target.value)} className="w-full bg-black border border-white/10 rounded-2xl p-4 outline-none focus:border-amber-500 transition-all font-bold" />
@@ -304,13 +307,23 @@ export default function App() {
                       <input type="number" value={newPrice} onChange={e => setNewPrice(e.target.value)} className="w-full bg-black border border-white/10 rounded-2xl p-4 outline-none focus:border-amber-500 transition-all font-black text-emerald-500" />
                    </div>
                    <div className="space-y-1">
-                      <label className="text-[9px] font-black text-zinc-600 uppercase ml-2 tracking-widest">Data</label>
-                      <input type="date" value={newDate} onChange={e => setNewDate(e.target.value)} className="w-full bg-black border border-white/10 rounded-2xl p-4 outline-none focus:border-amber-500 transition-all text-xs" />
+                      <label className="text-[9px] font-black text-zinc-600 uppercase ml-2 tracking-widest italic">Hoje (Calendário)</label>
+                      <input type="date" value={newDate} onChange={e => setNewDate(e.target.value)} className="w-full bg-black border border-white/10 rounded-2xl p-4 outline-none focus:border-amber-500 transition-all text-xs text-white" />
                    </div>
                 </div>
+                
+                <div className="space-y-2">
+                   <label className="text-[9px] font-black text-zinc-600 uppercase ml-2 tracking-widest">Serviços Realizados</label>
+                   <div className="flex gap-2">
+                    {['Cabelo', 'Barba', 'Sobrancelha'].map(s => (
+                      <button key={s} type="button" onClick={() => setSelectedServices(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])} className={cn("flex-1 py-3 rounded-xl text-[9px] font-black uppercase border transition-all", selectedServices.includes(s) ? "bg-amber-500 border-amber-500 text-black shadow-lg shadow-amber-500/20" : "bg-black border-white/10 text-zinc-600")}>{s}</button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="flex gap-4 pt-6">
                   <button type="button" onClick={() => { setIsRenewModalOpen(false); setEditingClient(null); }} className="flex-1 py-4 text-zinc-600 font-black uppercase text-[10px] tracking-[0.2em]">Sair</button>
-                  <button type="submit" className="flex-1 bg-emerald-500 text-black py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-emerald-500/20 active:scale-95 transition-all">Confirmar Retorno</button>
+                  <button type="submit" className="flex-1 bg-emerald-500 text-black py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-emerald-500/20">Zerar Dias</button>
                 </div>
              </form>
           </div>
@@ -319,10 +332,10 @@ export default function App() {
 
       {/* MODAL: NOVO CLIENTE */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-6 backdrop-blur-md">
-          <div className="bg-zinc-900 border border-white/5 w-full max-w-md rounded-[3rem] p-10 shadow-2xl">
+        <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-6 backdrop-blur-md overflow-y-auto no-scrollbar">
+          <div className="bg-zinc-900 border border-white/5 w-full max-w-md rounded-[3rem] p-10 shadow-2xl my-auto">
             <h3 className="text-2xl font-black mb-8 text-center italic tracking-tighter uppercase tracking-[0.1em]">NOVO <span className="text-amber-500 text-3xl">CLIENTE</span></h3>
-            <form onSubmit={saveClient} className="space-y-5">
+            <form onSubmit={saveClient} className="space-y-5 text-left">
               <div className="space-y-1">
                 <label className="text-[9px] font-black text-zinc-600 uppercase ml-2 tracking-widest">Nome</label>
                 <input required placeholder="Nome Completo" value={newName} onChange={e => setNewName(e.target.value)} className="w-full bg-black border border-white/10 rounded-2xl p-5 outline-none focus:border-amber-500 transition-all font-bold" />
@@ -337,14 +350,17 @@ export default function App() {
                   <input type="number" placeholder="50" value={newPrice} onChange={e => setNewPrice(e.target.value)} className="w-full bg-black border border-white/10 rounded-2xl p-5 outline-none focus:border-amber-500 font-black text-emerald-500" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[9px] font-black text-zinc-600 uppercase ml-2 tracking-widest">Data</label>
-                  <input type="date" value={newDate} onChange={e => setNewDate(e.target.value)} className="w-full bg-black border border-white/10 rounded-2xl p-5 outline-none focus:border-amber-500 text-xs" />
+                  <label className="text-[9px] font-black text-zinc-600 uppercase ml-2 tracking-widest italic">Data (Calendário)</label>
+                  <input type="date" value={newDate} onChange={e => setNewDate(e.target.value)} className="w-full bg-black border border-white/10 rounded-2xl p-5 outline-none focus:border-amber-500 transition-all text-xs text-white" />
                 </div>
               </div>
-              <div className="flex gap-2">
-                {['Cabelo', 'Barba', 'Sobrancelha'].map(s => (
-                  <button key={s} type="button" onClick={() => setSelectedServices(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])} className={cn("flex-1 py-4 rounded-2xl text-[9px] font-black uppercase border transition-all", selectedServices.includes(s) ? "bg-amber-500 border-amber-500 text-black shadow-lg shadow-amber-500/20" : "bg-black border-white/10 text-zinc-600")}>{s}</button>
-                ))}
+              <div className="space-y-2">
+                  <label className="text-[9px] font-black text-zinc-600 uppercase ml-2 tracking-widest">Serviços</label>
+                  <div className="flex gap-2">
+                    {['Cabelo', 'Barba', 'Sobrancelha'].map(s => (
+                      <button key={s} type="button" onClick={() => setSelectedServices(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])} className={cn("flex-1 py-4 rounded-2xl text-[9px] font-black uppercase border transition-all", selectedServices.includes(s) ? "bg-amber-500 border-amber-500 text-black shadow-lg shadow-amber-500/20" : "bg-black border-white/10 text-zinc-600")}>{s}</button>
+                    ))}
+                  </div>
               </div>
               <div className="flex gap-4 pt-6">
                 <button type="button" onClick={() => { setIsModalOpen(false); setEditingClient(null); }} className="flex-1 py-5 text-zinc-600 font-black uppercase text-[10px] tracking-[0.2em]">Cancelar</button>
@@ -355,12 +371,12 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL: PERFIL */}
+      {/* MODAL: PERFIL (Onde você define seu nome) */}
       {isProfileModalOpen && (
         <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-8 backdrop-blur-2xl">
           <div className="bg-zinc-900 border border-white/10 w-full max-w-sm rounded-[3rem] p-10 text-center shadow-3xl">
             <h3 className="text-2xl font-black mb-2 tracking-tight uppercase italic tracking-widest">Meu Perfil</h3>
-            <p className="text-zinc-500 text-[10px] mb-8 uppercase font-bold tracking-widest">Personalize seu acesso</p>
+            <p className="text-zinc-500 text-[10px] mb-8 uppercase font-bold tracking-widest">Identifique-se no sistema</p>
             <input autoFocus placeholder="Ex: Barbeiro" value={userName} onChange={e => setUserName(e.target.value)} className="w-full bg-black border border-white/10 rounded-2xl p-5 mb-6 text-center font-bold text-white outline-none focus:border-amber-500 transition-all" />
             <button onClick={updateProfile} className="w-full bg-amber-500 text-black py-5 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-amber-500/20 active:scale-95 transition-all">Salvar Perfil</button>
           </div>
