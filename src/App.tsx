@@ -68,26 +68,31 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Load client data
+// Carregar dados do banco de dados Supabase
   useEffect(() => {
-    if (session) {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        try {
-          setClients(JSON.parse(saved));
-        } catch (e) {
-          console.error("Failed to load clients", e);
+    const fetchClients = async () => {
+      if (session) {
+        const { data, error } = await supabase
+          .from('clientes')
+          .select('*')
+          .order('last_visit', { ascending: false });
+
+        if (error) {
+          console.error("Erro ao carregar clientes", error);
+        } else {
+          const formattedData = data?.map(c => ({
+            id: c.id,
+            name: c.name,
+            phone: c.phone,
+            lastVisit: c.last_visit,
+            createdAt: c.created_at
+          })) || [];
+          setClients(formattedData);
         }
       }
-    }
+    };
+    fetchClients();
   }, [session]);
-
-  // Save client data
-  useEffect(() => {
-    if (session) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(clients));
-    }
-  }, [clients, session]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,23 +114,39 @@ export default function App() {
     await supabase.auth.signOut();
   };
 
-  const addClient = (e: React.FormEvent) => {
+const addClient = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newName || !newPhone) return;
+    if (!newName || !newPhone || !session) return;
 
-    const newClient: Client = {
-      id: crypto.randomUUID(),
+    const newClient = {
       name: newName,
       phone: newPhone.replace(/\D/g, ''),
-      lastVisit: newDate,
-      createdAt: new Date().toISOString()
+      last_visit: newDate,
+      user_id: session.user.id
     };
 
-    setClients([newClient, ...clients]);
-    setNewName('');
-    setNewPhone('');
-    setNewDate(format(new Date(), 'yyyy-MM-dd'));
-    setIsModalOpen(false);
+    const { data, error } = await supabase
+      .from('clientes')
+      .insert([newClient])
+      .select();
+
+    if (!error && data) {
+      const insertedClient = {
+        id: data[0].id,
+        name: data[0].name,
+        phone: data[0].phone,
+        lastVisit: data[0].last_visit,
+        createdAt: data[0].created_at
+      };
+      setClients([insertedClient, ...clients]);
+      setNewName('');
+      setNewPhone('');
+      setNewDate(format(new Date(), 'yyyy-MM-dd'));
+      setIsModalOpen(false);
+    } else {
+      console.error(error);
+      alert("Erro ao salvar. Verifique se a tabela 'clientes' foi criada no SQL Editor.");
+    }
   };
 
   const deleteClient = (id: string) => {
