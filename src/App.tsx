@@ -68,30 +68,37 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-// Carregar dados do banco de dados Supabase
-  useEffect(() => {
-    const fetchClients = async () => {
-      if (session) {
-        const { data, error } = await supabase
-          .from('clientes')
-          .select('*')
-          .order('last_visit', { ascending: false });
+useEffect(() => {
+    if (!session) return;
 
-        if (error) {
-          console.error("Erro ao carregar clientes", error);
-        } else {
-          const formattedData = data?.map(c => ({
-            id: c.id,
-            name: c.name,
-            phone: c.phone,
-            lastVisit: c.last_visit,
-            createdAt: c.created_at
-          })) || [];
-          setClients(formattedData);
-        }
+    const fetchClients = async () => {
+      const { data, error } = await supabase
+        .from('clientes')
+        .select('*')
+        .order('last_visit', { ascending: false });
+
+      if (!error && data) {
+        setClients(data.map(c => ({
+          id: c.id,
+          name: c.name,
+          phone: c.phone,
+          lastVisit: c.last_visit,
+          createdAt: c.created_at
+        })));
       }
     };
+
     fetchClients();
+
+    // ESCUTA EM TEMPO REAL
+    const channel = supabase
+      .channel('db-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, () => {
+        fetchClients();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [session]);
 
   const handleLogin = async (e: React.FormEvent) => {
