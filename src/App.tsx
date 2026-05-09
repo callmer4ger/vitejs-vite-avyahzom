@@ -156,9 +156,24 @@ const addClient = async (e: React.FormEvent) => {
     }
   };
 
-  const deleteClient = (id: string) => {
-    if (confirm('Tem certeza que deseja excluir este cliente?')) {
-      setClients(clients.filter(c => c.id !== id));
+const deleteClient = async (id: string) => {
+    if (!session) return;
+    
+    // Confirmação para não apagar sem querer
+    if (!confirm("Tem certeza que deseja excluir este cliente?")) return;
+
+    const { error } = await supabase
+      .from('clientes')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error("Erro ao excluir", error);
+      alert("Erro ao excluir do banco de dados.");
+    } else {
+      // O Realtime que configuramos antes vai detectar a mudança 
+      // e atualizar a lista automaticamente, mas podemos filtrar aqui também:
+      setClients(clients.filter(client => client.id !== id));
     }
   };
 
