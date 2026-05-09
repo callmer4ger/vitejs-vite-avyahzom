@@ -7,7 +7,6 @@ import {
 import { format, differenceInDays, parseISO, startOfDay, subDays } from 'date-fns';
 import { supabase } from './lib/supabase';
 
-// Função auxiliar para organizar as classes CSS
 function cn(...inputs: any[]) {
   return inputs.filter(Boolean).join(' ');
 }
@@ -50,19 +49,23 @@ export default function App() {
   }, []);
 
   const fetchProfile = async (userId: string) => {
-    try {
-      const { data } = await supabase.from('profiles').select('full_name').eq('id', userId).single();
-      if (data) setUserName(data.full_name);
-      else setIsProfileModalOpen(true);
-    } catch (e) {
+    const { data, error } = await supabase.from('profiles').select('full_name').eq('id', userId).single();
+    if (data && data.full_name) {
+      setUserName(data.full_name);
+    } else {
       setIsProfileModalOpen(true);
     }
   };
 
   const updateProfile = async () => {
-    if (!userName || !session) return;
+    if (!userName.trim() || !session) return;
     const { error } = await supabase.from('profiles').upsert({ id: session.user.id, full_name: userName });
-    if (!error) setIsProfileModalOpen(false);
+    if (!error) {
+      setIsProfileModalOpen(false);
+      fetchProfile(session.user.id);
+    } else {
+      alert("Erro ao salvar perfil.");
+    }
   };
 
   const fetchClients = async () => {
@@ -118,13 +121,9 @@ export default function App() {
 
   const refreshClientVisit = async (id: string) => {
     const today = new Date().toISOString().split('T')[0];
-    const { error } = await supabase.from('clientes').update({ last_visit: today }).eq('id', id);
-    if (!error) fetchClients();
+    await supabase.from('clientes').update({ last_visit: today }).eq('id', id);
+    setTimeout(fetchClients, 300);
   };
-
-  const filteredClients = useMemo(() => {
-    return clients.filter(c => (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()));
-  }, [clients, searchTerm]);
 
   const stats = useMemo(() => {
     const total = clients.length;
@@ -154,7 +153,7 @@ export default function App() {
           <div className="w-20 h-20 bg-amber-500 rounded-[2rem] flex items-center justify-center shadow-2xl mx-auto mb-6">
             <Scissors className="text-black w-10 h-10" />
           </div>
-          <h1 className="text-4xl font-black tracking-tighter">BARBER <span className="text-amber-500">PRO</span></h1>
+          <h1 className="text-4xl font-black tracking-tighter italic">BARBER <span className="text-amber-500">PRO</span></h1>
         </div>
         <form onSubmit={handleLogin} className="bg-zinc-900 p-8 rounded-[2rem] space-y-4 border border-white/5">
           {loginError && <p className="text-red-500 text-xs text-center">{loginError}</p>}
@@ -170,7 +169,7 @@ export default function App() {
     <div className="min-h-screen bg-[#0a0a0a] text-white font-sans">
       <header className="border-b border-white/5 bg-zinc-900/80 backdrop-blur-md sticky top-0 z-30 px-6 h-20 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-amber-500 rounded-xl flex items-center justify-center"><Scissors size={20} className="text-black" /></div>
+          <div className="w-10 h-10 bg-amber-500 rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/20"><Scissors size={20} className="text-black" /></div>
           <div>
             <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest leading-none">Olá, {userName || 'Barbeiro'}!</p>
             <h1 className="text-xl font-black tracking-tighter">BARBER <span className="text-amber-500">PRO</span></h1>
@@ -201,7 +200,7 @@ export default function App() {
             <p className="text-2xl font-black leading-none">{stats.fidelity}%</p>
           </div>
           <div className="bg-zinc-900 border border-emerald-500/20 p-4 rounded-3xl text-emerald-500">
-            <p className="text-[10px] font-bold uppercase mb-1 tracking-widest">Faturamento</p>
+            <p className="text-[10px] font-bold uppercase mb-1 tracking-widest text-zinc-500">Faturamento ({filterPeriod})</p>
             <p className="text-2xl font-black leading-none">R$ {faturamento}</p>
           </div>
         </div>
@@ -216,7 +215,7 @@ export default function App() {
 
         <div className="relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600" />
-          <input type="text" placeholder="Buscar barbeiro..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-zinc-900 border border-white/5 rounded-2xl pl-12 pr-4 py-4 focus:border-amber-500 outline-none transition-all" />
+          <input type="text" placeholder="Buscar cliente..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-zinc-900 border border-white/5 rounded-2xl pl-12 pr-4 py-4 focus:border-amber-500 outline-none transition-all" />
         </div>
 
         {isSelectionMode && selectedClients.length > 0 && (
@@ -258,7 +257,7 @@ export default function App() {
 
                 <div className="flex gap-2">
                   <button onClick={() => refreshClientVisit(c.id)} className="flex-1 p-4 bg-emerald-500/10 text-emerald-500 rounded-2xl hover:bg-emerald-500/20"><RefreshCw size={20} /></button>
-                  <a href={`https://wa.me/55${c.phone?.replace(/\D/g, '')}`} target="_blank" className="flex-1 p-4 bg-amber-500 text-black rounded-2xl hover:bg-amber-400 flex justify-center"><MessageSquare size={20} /></a>
+                  <a href={`https://wa.me/55${c.phone?.replace(/\D/g, '')}`} target="_blank" className="flex-1 p-4 bg-amber-500 text-black rounded-2xl hover:bg-amber-400 flex justify-center shadow-lg shadow-amber-500/10"><MessageSquare size={20} /></a>
                   <button onClick={() => deleteClients([c.id])} className="p-4 bg-zinc-800 text-zinc-500 rounded-2xl hover:text-red-500 transition-all"><Trash2 size={20} /></button>
                 </div>
               </div>
@@ -273,8 +272,19 @@ export default function App() {
           <div className="bg-zinc-900 border border-white/10 w-full max-w-sm rounded-[2.5rem] p-8 text-center shadow-2xl">
             <h3 className="text-2xl font-black mb-2 tracking-tight">COMO SE CHAMA?</h3>
             <p className="text-zinc-500 text-[10px] mb-6 uppercase font-bold tracking-widest tracking-widest">Para sua dashboard</p>
-            <input autoFocus placeholder="Ex: Wayne Barbeiro" value={userName} onChange={e => setUserName(e.target.value)} className="w-full bg-black border border-white/10 rounded-2xl p-4 mb-4 text-center font-bold outline-none focus:border-amber-500" />
-            <button onClick={updateProfile} className="w-full bg-amber-500 text-black py-4 rounded-2xl font-black">SALVAR PERFIL</button>
+            <input 
+              autoFocus 
+              placeholder="Ex: Barbeiro" 
+              value={userName} 
+              onChange={e => setUserName(e.target.value)} 
+              className="w-full bg-black border border-white/10 rounded-2xl p-4 mb-4 text-center font-bold outline-none focus:border-amber-500 text-white" 
+            />
+            <button 
+              onClick={updateProfile} 
+              className="w-full bg-amber-500 text-black py-4 rounded-2xl font-black hover:bg-amber-400 transition-all active:scale-95"
+            >
+              SALVAR PERFIL
+            </button>
           </div>
         </div>
       )}
