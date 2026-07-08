@@ -317,4 +317,8 @@ export default function App() {
 
                   <div className="flex gap-2 lg:gap-4 pt-4 lg:pt-8 border-t border-white/5">
                     {!isHistoryView && <button onClick={() => openRenewModal(c)} className="flex-1 py-3 lg:py-5 bg-emerald-500/10 text-emerald-500 rounded-xl lg:rounded-2xl hover:bg-emerald-500 transition-all flex justify-center items-center gap-1.5 font-black text-[9px] uppercase"><RefreshCw size={16} /> Renovar</button>}
-                    <a href={`https://wa.me/55${c.phone}?text=${whatsappMs
+                    <a
+  href={`https://wa.me/55${c.phone}?text=${whatsappMessage}`}
+  target="_blank"
+  rel="noopener noreferrer"
+>
