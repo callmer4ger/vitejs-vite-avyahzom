@@ -1,324 +1,365 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  UserPlus, MessageSquare, Search, Trash2, 
-  Scissors, LogOut, RefreshCw, CheckSquare, 
-  Square, User as UserIcon, TrendingUp, Wallet, 
-  ChevronDown, FolderClock, Flame, Trophy, BarChart3, X, Filter
+  Users, 
+  UserPlus, 
+  MessageSquare, 
+  Calendar, 
+  Search, 
+  TrendingUp, 
+  AlertCircle, 
+  Trash2,
+  ExternalLink,
+  Scissors
 } from 'lucide-react';
-import { format, differenceInDays, parseISO, startOfDay, subDays, eachDayOfInterval, isSameDay } from 'date-fns';
-import { supabase } from './lib/supabase';
+import { format, differenceInDays, parseISO } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
 
-function cn(...inputs: any[]) {
-  return inputs.filter(Boolean).join(' ');
+// Utility for Tailwind classes
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
 }
 
 interface Client {
   id: string;
   name: string;
   phone: string;
-  price: number;
-  services: string[];
-  last_visit: string;
-  streak_count: number;
-  previous_name?: string;
+  lastVisit: string;
+  createdAt: string;
 }
 
+const STORAGE_KEY = 'barber_recover_clients';
+const RECOVERY_THRESHOLD_DAYS = 20;
+
 export default function App() {
-  const [session, setSession] = useState<any>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [userName, setUserName] = useState('');
-  const [loginError, setLoginError] = useState('');
-
-  const [allRecords, setAllRecords] = useState<Client[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-  const [isRenewModalOpen, setIsRenewModalOpen] = useState(false);
-  const [isRankingOpen, setIsRankingOpen] = useState(false);
-  const [isFaturamentoOpen, setIsFaturamentoOpen] = useState(false);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
-  const [isHistoryView, setIsHistoryView] = useState(false);
-
   const [searchTerm, setSearchTerm] = useState('');
-  const [delayFilter, setDelayFilter] = useState('all');
-  const [rankingSort, setRankingSort] = useState<'streak' | 'spent' | 'cabelo' | 'barba' | 'sobrancelha'>('streak');
-  const [faturamentoPeriod, setFaturamentoPeriod] = useState('month');
-
-  const [editingClient, setEditingClient] = useState<Client | null>(null);
+  
+  // Form State
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
-  const [newPrice, setNewPrice] = useState('');
-  const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [newDate, setNewDate] = useState(format(new Date(), 'yyyy-MM-dd'));
 
-  const [isSelectionMode, setIsSelectionMode] = useState(false);
-  const [selectedPhones, setSelectedPhones] = useState<string[]>([]);
-  const [phonesToDelete, setPhonesToDelete] = useState<string[]>([]);
-
+  // Load data
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session) fetchProfile(session.user.id);
-      setAuthLoading(false);
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) fetchProfile(session.user.id);
-    });
-    return () => subscription.unsubscribe();
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        setClients(JSON.parse(saved));
+      } catch (e) {
+        console.error("Failed to load clients", e);
+      }
+    }
   }, []);
 
-  const fetchProfile = async (userId: string) => {
-    const { data } = await supabase.from('profiles').select('full_name').eq('id', userId).maybeSingle();
-    if (data?.full_name) { setUserName(data.full_name); setIsProfileModalOpen(false); }
-    else setIsProfileModalOpen(true);
-  };
+  // Save data
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(clients));
+  }, [clients]);
 
-  const updateProfile = async () => {
-    if (!userName.trim() || !session) return;
-    await supabase.from('profiles').upsert({ id: session.user.id, full_name: userName.trim() });
-    setIsProfileModalOpen(false);
-  };
-
-  const fetchClients = async () => {
-    if (!session) return;
-    const { data, error } = await supabase.from('clientes').select('*').order('last_visit', { ascending: false });
-    if (!error && data) {
-      setAllRecords(data.map(c => ({ 
-        ...c, 
-        price: Number(c.price) || 0, 
-        services: Array.isArray(c.services) ? c.services : [], 
-        streak_count: Number(c.streak_count) || 1 
-      })));
-    }
-  };
-
-  useEffect(() => { if (session) fetchClients(); }, [session]);
-
-  const saveClient = async (e: React.FormEvent) => {
+  const addClient = (e: React.FormEvent) => {
     e.preventDefault();
-    const phone = newPhone.replace(/\D/g, '');
-    let prevName = editingClient?.name || null;
-    let nextStreak = 1;
+    if (!newName || !newPhone) return;
 
-    if (editingClient) {
-      if (editingClient.name === newName) prevName = editingClient.previous_name || null;
-      if (isRenewModalOpen) nextStreak = (Number(editingClient.streak_count) || 1) + 1;
-      else nextStreak = Number(editingClient.streak_count) || 1;
-    }
-
-    const payload = {
-      name: newName, phone, last_visit: newDate,
-      user_id: session.user.id, services: selectedServices,
-      price: Number(newPrice) || 0, previous_name: prevName,
-      streak_count: nextStreak
+    const newClient: Client = {
+      id: crypto.randomUUID(),
+      name: newName,
+      phone: newPhone.replace(/\D/g, ''),
+      lastVisit: newDate,
+      createdAt: new Date().toISOString()
     };
 
-    const { error } = (isRenewModalOpen) 
-      ? await supabase.from('clientes').insert([payload])
-      : editingClient ? await supabase.from('clientes').update(payload).eq('id', editingClient.id)
-      : await supabase.from('clientes').insert([payload]);
+    setClients([newClient, ...clients]);
+    setNewName('');
+    setNewPhone('');
+    setNewDate(format(new Date(), 'yyyy-MM-dd'));
+    setIsModalOpen(false);
+  };
 
-    if (!error) {
-      setIsModalOpen(false); setIsRenewModalOpen(false); setEditingClient(null); resetForm();
-      fetchClients();
+  const deleteClient = (id: string) => {
+    if (confirm('Tem certeza que deseja excluir este cliente?')) {
+      setClients(clients.filter(c => c.id !== id));
     }
   };
 
-  const executeDelete = async () => {
-    if (phonesToDelete.length === 0) return;
-    await supabase.from('clientes').delete().in('phone', phonesToDelete);
-    setAllRecords(prev => prev.filter(r => !phonesToDelete.includes(r.phone)));
-    setIsDeleteModalOpen(false); setIsSelectionMode(false); setSelectedPhones([]); setPhonesToDelete([]);
-  };
-
-  const resetForm = () => {
-    setNewName(''); setNewPhone(''); setNewPrice(''); setSelectedServices([]);
-    setNewDate(format(new Date(), 'yyyy-MM-dd'));
-  };
-
-  const openRenewModal = (client: Client) => {
-    setEditingClient(client); setNewName(client.name); setNewPhone(client.phone);
-    setNewPrice(client.price.toString()); setSelectedServices(client.services);
-    setNewDate(format(new Date(), 'yyyy-MM-dd')); setIsRenewModalOpen(true);
-  };
-
-  const { dashboardList, historyList, rankingList } = useMemo(() => {
-    const sorted = [...allRecords].sort((a, b) => parseISO(b.last_visit).getTime() - parseISO(a.last_visit).getTime());
-    const latestMap = new Map<string, Client>();
-    const history: Client[] = [];
-    const rankMap = new Map<string, any>();
-
-    sorted.forEach(r => {
-      if (!latestMap.has(r.phone)) latestMap.set(r.phone, r);
-      else history.push(r);
-      const cur = rankMap.get(r.phone) || { name: r.name, phone: r.phone, spent: 0, streak: 0, cabelo: 0, barba: 0, sobrancelha: 0 };
-      cur.spent += r.price; cur.streak = Math.max(cur.streak, r.streak_count);
-      if (r.services.includes('Cabelo')) cur.cabelo++;
-      if (r.services.includes('Barba')) cur.barba++;
-      if (r.services.includes('Sobrancelha')) cur.sobrancelha++;
-      rankMap.set(r.phone, cur);
-    });
-
-    const dashboardOrdered = Array.from(latestMap.values()).sort((a, b) => parseISO(a.last_visit).getTime() - parseISO(b.last_visit).getTime());
-    const rankArray = Array.from(rankMap.values()).sort((a, b) => {
-      if (rankingSort === 'streak') return b.streak - a.streak;
-      if (rankingSort === 'spent') return b.spent - a.spent;
-      return b[rankingSort] - a[rankingSort];
-    });
-    return { dashboardList: dashboardOrdered, historyList: history, rankingList: rankArray };
-  }, [allRecords, rankingSort]);
-
-  const revenueChartData = useMemo(() => {
-    const today = startOfDay(new Date());
-    const daysCount = faturamentoPeriod === 'week' ? 7 : faturamentoPeriod === 'today' ? 1 : 30;
-    const interval = eachDayOfInterval({ start: subDays(today, daysCount - 1), end: today });
-    const points = interval.map(day => {
-      const dailyTotal = allRecords.filter(r => isSameDay(parseISO(r.last_visit), day)).reduce((acc, cur) => acc + cur.price, 0);
-      return { date: day, total: dailyTotal };
-    });
-    const maxVal = Math.max(...points.map(p => p.total), 1);
-    const totalRevenue = points.reduce((acc, p) => acc + p.total, 0);
-    return { points, maxVal, totalRevenue };
-  }, [allRecords, faturamentoPeriod]);
+  const filteredClients = useMemo(() => {
+    return clients.filter(client => 
+      client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      client.phone.includes(searchTerm)
+    ).sort((a, b) => new Date(b.lastVisit).getTime() - new Date(a.lastVisit).getTime());
+  }, [clients, searchTerm]);
 
   const stats = useMemo(() => {
-    const today = startOfDay(new Date());
-    const needsRecovery = dashboardList.filter(c => differenceInDays(today, parseISO(c.last_visit)) >= 20).length;
-    const filteredDashboard = dashboardList.filter(c => {
-      const days = differenceInDays(today, parseISO(c.last_visit));
-      if (delayFilter === '20days') return days >= 20;
-      if (delayFilter === '30days') return days >= 30;
-      return true;
-    });
-    return { list: filteredDashboard, needsRecovery, fidelity: dashboardList.length > 0 ? Math.round(((dashboardList.length - needsRecovery) / dashboardList.length) * 100) : 0 };
-  }, [dashboardList, delayFilter]);
+    const total = clients.length;
+    const needsRecovery = clients.filter(c => {
+      const days = differenceInDays(new Date(), parseISO(c.lastVisit));
+      return days >= RECOVERY_THRESHOLD_DAYS;
+    }).length;
 
-  const getStreakColor = (count: number) => {
-    if (count < 10) return 'text-white';
-    if (count < 20) return 'text-yellow-400 drop-shadow-[0_0_5px_yellow]';
-    if (count < 30) return 'text-[#00ff41] drop-shadow-[0_0_8px_#00ff41]';
-    if (count < 40) return 'text-[#00f3ff] drop-shadow-[0_0_8px_#00f3ff]';
-    if (count < 50) return 'text-[#ff00ff] drop-shadow-[0_0_8px_#ff00ff]';
-    return 'animate-text-rainbow font-black';
+    return { total, needsRecovery };
+  }, [clients]);
+
+  const getWhatsAppLink = (client: Client) => {
+    const message = encodeURIComponent(`Olá ${client.name}! Tudo bem? Notei que faz um tempinho que você não passa aqui na barbearia para dar aquele talento. Que tal agendarmos um horário para essa semana? Estaremos te esperando! ✂️💈`);
+    return `https://wa.me/55${client.phone}?text=${message}`;
   };
 
-  if (authLoading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center text-amber-500 animate-pulse text-2xl font-black italic">BARBER PRO</div>;
-
-  if (!session) return (
-    <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6">
-      <form onSubmit={async (e) => { e.preventDefault(); await supabase.auth.signInWithPassword({email, password}); }} className="bg-zinc-900/40 p-10 rounded-[3rem] border border-white/5 space-y-6 w-full max-w-sm shadow-2xl backdrop-blur-xl">
-        <h1 className="text-4xl font-black text-white italic tracking-tighter text-center uppercase">BARBER <span className="text-amber-500">PRO</span></h1>
-        {loginError && <p className="text-red-500 text-[10px] text-center font-black uppercase tracking-widest">{loginError}</p>}
-        <input required type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="E-mail" className="w-full bg-black/40 border border-white/10 rounded-2xl p-5 outline-none focus:border-amber-500 text-white" />
-        <input required type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Senha" className="w-full bg-black/40 border border-white/10 rounded-2xl p-5 outline-none focus:border-amber-500 text-white" />
-        <button className="w-full bg-amber-500 text-black py-5 rounded-2xl font-black uppercase shadow-xl active:scale-95 transition-all">Entrar</button>
-      </form>
-    </div>
-  );
+  const getClientStatus = (lastVisit: string) => {
+    const days = differenceInDays(new Date(), parseISO(lastVisit));
+    if (days >= RECOVERY_THRESHOLD_DAYS) {
+      return { 
+        label: 'Recuperar', 
+        color: 'text-red-500 bg-red-500/10 border-red-500/20',
+        icon: <AlertCircle className="w-4 h-4" />,
+        isOverdue: true,
+        days
+      };
+    }
+    return { 
+      label: 'Em dia', 
+      color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20',
+      icon: <TrendingUp className="w-4 h-4" />,
+      isOverdue: false,
+      days
+    };
+  };
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white font-sans selection:bg-amber-500/30 overflow-x-hidden">
-      <style dangerouslySetInnerHTML={{ __html: `
-        @keyframes text-rainbow { 0% { color: #ff0000; } 25% { color: #00ff00; } 50% { color: #0000ff; } 75% { color: #ff00ff; } 100% { color: #ff0000; } }
-        .animate-text-rainbow { animation: text-rainbow 2s linear infinite; }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .glass-card { background: rgba(24, 24, 27, 0.4); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); transition: all 0.3s ease; }
-      ` }} />
-
-      <header className="sticky top-0 z-40 px-4 lg:px-20 h-16 lg:h-24 flex items-center justify-between bg-[#050505]/80 backdrop-blur-xl border-b border-white/5">
-        <div className="flex items-center gap-3">
-          <button onClick={() => setIsProfileModalOpen(true)} className="w-9 h-9 lg:w-12 lg:h-12 glass-card rounded-xl flex items-center justify-center text-zinc-400 hover:text-amber-500 transition-all"><UserIcon size={18} /></button>
-          <div className="text-base lg:text-2xl font-black italic tracking-tighter truncate max-w-[150px]">Olá, {userName.split(' ')[0]}!</div>
-        </div>
-        <div className="flex items-center gap-1.5 lg:gap-4">
-          <button onClick={() => setIsRankingOpen(true)} className="p-2 lg:p-4 glass-card text-amber-500 rounded-xl"><Trophy size={18} /></button>
-          <button onClick={() => setIsFaturamentoOpen(true)} className="p-2 lg:p-4 glass-card text-emerald-500 rounded-xl"><BarChart3 size={18} /></button>
-          <button onClick={() => setIsHistoryView(!isHistoryView)} className={cn("p-2 lg:p-4 rounded-xl border border-white/5 transition-all", isHistoryView ? "bg-amber-500 text-black shadow-amber-500/20" : "glass-card text-zinc-500")}><FolderClock size={18} /></button>
-          <button onClick={() => { resetForm(); setIsModalOpen(true); }} className="bg-amber-500 text-black px-3 lg:px-8 py-2 lg:py-4 rounded-xl lg:rounded-2xl font-black text-[10px] lg:text-xs hover:scale-105 active:scale-95 transition-all shadow-lg flex items-center gap-1.5 uppercase tracking-widest"><UserPlus size={16} /> <span className="hidden lg:inline">CADASTRAR</span></button>
-          <button onClick={() => setIsLogoutModalOpen(true)} className="p-2 text-zinc-700 hover:text-red-500 transition-colors"><LogOut size={18} /></button>
+    <div className="min-h-screen bg-[#0a0a0a] text-stone-100 font-sans selection:bg-amber-500/30">
+      {/* Header */}
+      <header className="border-b border-white/5 bg-[#0f0f0f]/80 backdrop-blur-md sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-amber-500 rounded-lg flex items-center justify-center shadow-lg shadow-amber-500/20">
+              <Scissors className="text-black w-6 h-6" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight">Recuperador <span className="text-amber-500">Barber Pro</span></h1>
+              <p className="text-xs text-stone-500 uppercase tracking-widest font-semibold">Dashboard do Barbeiro</p>
+            </div>
+          </div>
+          
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-black px-4 py-2.5 rounded-full font-bold transition-all active:scale-95 shadow-lg shadow-amber-500/10"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Novo Cliente</span>
+          </button>
         </div>
       </header>
 
-      <main className="p-4 lg:p-24 max-w-[1800px] mx-auto space-y-8 lg:space-y-12 pb-40 text-center">
-        {!isHistoryView && (
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-8 animate-in fade-in slide-in-from-top-4 duration-700">
-            <div className="col-span-2 lg:col-span-1 bg-gradient-to-br from-zinc-900 to-black border border-white/10 p-5 lg:p-10 rounded-[2rem] lg:rounded-[3rem] relative overflow-hidden shadow-2xl">
-              <TrendingUp className="absolute top-0 right-0 p-4 opacity-5" size={80} />
-              <p className="text-[9px] lg:text-[11px] font-black text-zinc-500 uppercase tracking-widest mb-1">Fidelidade</p>
-              <p className="text-4xl lg:text-9xl font-black text-amber-500 tracking-tighter">{stats.fidelity}%</p>
+      <main className="max-w-7xl mx-auto px-4 py-8 space-y-8">
+        {/* Stats Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="bg-[#141414] border border-white/5 p-6 rounded-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-stone-800 rounded-lg">
+                <Users className="w-5 h-5 text-stone-400" />
+              </div>
+              <span className="text-xs font-medium text-stone-500 uppercase">Total de Clientes</span>
             </div>
-            <div className="glass-card p-5 lg:p-10 rounded-[1.5rem] flex flex-col justify-center">
-              <p className="text-[9px] lg:text-[11px] text-red-500 font-black uppercase tracking-widest mb-1">Recuperar</p>
-              <p className="text-3xl lg:text-7xl font-black text-red-500 tracking-tighter">{stats.needsRecovery}</p>
-            </div>
-            <div className="glass-card p-5 lg:p-10 rounded-[1.5rem] flex flex-col justify-center">
-              <p className="text-[9px] lg:text-[11px] text-zinc-500 font-black uppercase tracking-widest mb-1">Clientes</p>
-              <p className="text-3xl lg:text-7xl font-black text-white tracking-tighter">{dashboardList.length}</p>
-            </div>
+            <p className="text-3xl font-bold">{stats.total}</p>
           </div>
-        )}
 
-        <div className="flex flex-col lg:flex-row gap-4 lg:gap-8 items-center">
-          <div className="relative flex-1 group w-full text-left">
-            <Search className="absolute left-4 lg:left-8 top-1/2 -translate-y-1/2 w-4 lg:w-6 h-4 lg:h-6 text-zinc-600 group-focus-within:text-amber-500 transition-all" />
-            <input type="text" placeholder="Localizar cliente..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-zinc-900/30 border border-white/10 rounded-2xl lg:rounded-3xl pl-12 lg:pl-20 pr-6 lg:pr-10 py-3 lg:py-6 outline-none focus:border-amber-500/40 text-sm lg:text-xl font-medium text-white shadow-inner" />
+          <div className="bg-[#141414] border border-white/5 p-6 rounded-2xl relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-red-500/5 -mr-8 -mt-8 rounded-full blur-3xl group-hover:bg-red-500/10 transition-colors" />
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-red-500/10 rounded-lg">
+                <AlertCircle className="w-5 h-5 text-red-500" />
+              </div>
+              <span className="text-xs font-medium text-stone-500 uppercase">Precisam de Atenção</span>
+            </div>
+            <p className="text-3xl font-bold text-red-500">{stats.needsRecovery}</p>
+            <p className="text-sm text-stone-500 mt-1">Há mais de {RECOVERY_THRESHOLD_DAYS} dias sem voltar</p>
           </div>
-          <div className="relative w-full lg:w-auto min-w-[300px]">
-            <select value={delayFilter} onChange={(e) => setDelayFilter(e.target.value)} className="appearance-none bg-zinc-900/50 border border-white/10 rounded-2xl px-6 py-3 lg:py-6 pr-12 text-[10px] lg:text-[12px] font-black uppercase tracking-widest outline-none focus:border-amber-500/50 w-full cursor-pointer text-white">
-              <option value="all">Ver Todos</option><option value="20days">Ausentes +20 dias</option><option value="30days">Ausentes +30 dias</option>
-            </select>
-            <ChevronDown size={16} className="absolute right-6 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
+
+          <div className="bg-[#141414] border border-white/5 p-6 rounded-2xl md:col-span-2 lg:col-span-1">
+             <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-emerald-500/10 rounded-lg">
+                <TrendingUp className="w-5 h-5 text-emerald-500" />
+              </div>
+              <span className="text-xs font-medium text-stone-500 uppercase">Status Geral</span>
+            </div>
+            <p className="text-3xl font-bold">
+              {stats.total > 0 ? Math.round(((stats.total - stats.needsRecovery) / stats.total) * 100) : 0}%
+            </p>
+            <p className="text-sm text-stone-500 mt-1">Taxa de fidelização atual</p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-8">
-          {(isHistoryView ? historyList : stats.list)
-            .filter(c => (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()))
-            .map(c => {
-              const days = differenceInDays(startOfDay(new Date()), parseISO(c.last_visit));
-              const isSel = selectedPhones.includes(c.phone);
-              const isAlert = days >= 20;
-              const whatsappMsg = encodeURIComponent(`Olá ${c.name.split(' ')[0]}! Tudo bem? Notei que faz um tempinho que você não passa aqui na barbearia para dar aquele talento. Que tal agendarmos um horário para essa semana? Estaremos te esperando!`);
+        {/* Client List Section */}
+        <div className="bg-[#141414] border border-white/5 rounded-2xl overflow-hidden">
+          <div className="p-6 border-b border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-amber-500" />
+              Gestão de Retornos
+            </h2>
+            <div className="relative group">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-500 group-focus-within:text-amber-500 transition-colors" />
+              <input 
+                type="text" 
+                placeholder="Buscar cliente..." 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="bg-stone-900 border border-white/5 rounded-xl pl-10 pr-4 py-2 w-full md:w-64 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500/50 transition-all"
+              />
+            </div>
+          </div>
 
-              return (
-                <div key={c.id} className={cn("glass-card rounded-[1.5rem] lg:rounded-[3rem] p-4 lg:p-8 flex flex-col justify-between transition-all", isSel ? "border-amber-500 bg-amber-500/5" : "")}>
-                  <div className="flex items-start justify-between mb-4 lg:mb-8 text-left">
-                    <div className="flex items-center gap-3 lg:gap-6">
-                      {isSelectionMode ? (
-                        <button onClick={() => setSelectedPhones(p => isSel ? p.filter(x => x !== c.phone) : [...p, c.phone])}>
-                          {isSel ? <div className="w-8 h-8 bg-amber-500 rounded-xl flex items-center justify-center text-black shadow-lg"><CheckSquare size={18} /></div> : <div className="w-8 h-8 border-2 border-zinc-800 rounded-lg hover:border-amber-500/50 transition-colors" />}
-                        </button>
-                      ) : (
-                        <div className="relative">
-                          <div className="w-12 h-12 lg:w-20 lg:h-20 bg-gradient-to-br from-zinc-800 to-zinc-900 border border-white/10 rounded-xl lg:rounded-2xl flex items-center justify-center text-amber-500 font-black text-lg lg:text-3xl shadow-inner">{c.name?.[0]?.toUpperCase()}</div>
-                          {Number(c.streak_count) >= 2 && !isHistoryView && (
-                            <div className={cn("absolute -top-2 -right-2 flex items-center gap-1 bg-black/90 px-2 py-1 rounded-full border border-white/20 text-[9px] lg:text-xs font-black shadow-2xl", getStreakColor(Number(c.streak_count)))}>
-                              <Flame size={12} className="fill-current" /> {c.streak_count}
-                            </div>
-                          )}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-stone-900/50 text-stone-500 text-xs uppercase tracking-wider">
+                  <th className="px-6 py-4 font-semibold">Cliente</th>
+                  <th className="px-6 py-4 font-semibold">Último Corte</th>
+                  <th className="px-6 py-4 font-semibold">Tempo Decorrido</th>
+                  <th className="px-6 py-4 font-semibold">Status</th>
+                  <th className="px-6 py-4 font-semibold text-right">Ação</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {filteredClients.map((client) => {
+                  const status = getClientStatus(client.lastVisit);
+                  return (
+                    <tr key={client.id} className="hover:bg-white/[0.02] transition-colors group">
+                      <td className="px-6 py-4">
+                        <div>
+                          <p className="font-medium text-stone-200 group-hover:text-amber-500 transition-colors">{client.name}</p>
+                          <p className="text-xs text-stone-500">{client.phone}</p>
                         </div>
-                      )}
-                      <div className="max-w-[150px] lg:max-w-none">
-                        <p className="font-black text-sm lg:text-2xl text-white/95 leading-none truncate">{c.name}</p>
-                        {c.previous_name && c.previous_name !== c.name && (
-                          <span className="text-[8px] lg:text-[10px] text-zinc-500 block italic font-bold mt-1 tracking-widest uppercase">Ant. {c.previous_name}</span>
-                        )}
-                        <p className="text-[10px] lg:text-[12px] text-zinc-500 font-black uppercase mt-1.5 lg:mt-3">R$ {c.price} • {c.services?.join(' + ')}</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className={cn("text-xl lg:text-4xl font-black tracking-tighter leading-none", isAlert ? "text-red-500" : "text-amber-500")}>{days}d</p>
-                      <p className="text-[8px] lg:text-[10px] text-zinc-700 font-black uppercase mt-1">Atraso</p>
-                    </div>
-                  </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-stone-400">
+                        {format(parseISO(client.lastVisit), "dd 'de' MMM, yyyy", { locale: ptBR })}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-stone-400">
+                        {status.days} {status.days === 1 ? 'dia' : 'dias'}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={cn(
+                          "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border",
+                          status.color
+                        )}>
+                          {status.icon}
+                          {status.label}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <a 
+                            href={getWhatsAppLink(client)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={cn(
+                              "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95",
+                              status.isOverdue 
+                                ? "bg-red-500 text-white hover:bg-red-600 shadow-lg shadow-red-500/20" 
+                                : "bg-stone-800 text-stone-400 hover:bg-stone-700"
+                            )}
+                          >
+                            <MessageSquare className="w-3.5 h-3.5" />
+                            <span>WhatsApp</span>
+                            <ExternalLink className="w-3 h-3 opacity-50" />
+                          </a>
+                          <button 
+                            onClick={() => deleteClient(client.id)}
+                            className="p-1.5 text-stone-600 hover:text-red-500 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {filteredClients.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-12 text-center text-stone-500 italic">
+                      {searchTerm ? 'Nenhum cliente encontrado para sua busca.' : 'Nenhum cliente cadastrado ainda.'}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </main>
 
-                  <div className="flex gap-2 lg:gap-4 pt-4 lg:pt-8 border-t border-white/5">
-                    {!isHistoryView && <button onClick={() => openRenewModal(c)} className="flex-1 py-3 lg:py-5 bg-emerald-500/10 text-emerald-500 rounded-xl lg:rounded-2xl hover:bg-emerald-500 transition-all flex justify-center items-center gap-1.5 font-black text-[9px] uppercase"><RefreshCw size={16} /> Renovar</button>}
-                    <a
-  href={`https://wa.me/55${c.phone}?text=${whatsappMessage}`}
-  target="_blank"
-  rel="noopener noreferrer"
->
+      {/* Footer */}
+      <footer className="max-w-7xl mx-auto px-4 py-12 border-t border-white/5">
+        <div className="flex flex-col items-center gap-4 text-stone-600 text-sm">
+          <p>© {new Date().getFullYear()} Recuperador Barber Pro. Sistema Premium de Gestão.</p>
+          <div className="flex items-center gap-6">
+            <span className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500" /> Sistema Ativo</span>
+            <span className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-amber-500" /> Local Storage habilitado</span>
+          </div>
+        </div>
+      </footer>
+
+      {/* Modal / Sidebar Form overlay */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
+          <div className="bg-[#141414] border border-white/10 w-full max-w-md rounded-3xl overflow-hidden shadow-2xl relative animate-in fade-in zoom-in duration-200">
+            <div className="p-6 border-b border-white/5 bg-[#1a1a1a]">
+              <h3 className="text-xl font-bold">Cadastrar Cliente</h3>
+              <p className="text-sm text-stone-500">Adicione um novo cliente à sua base de dados.</p>
+            </div>
+            <form onSubmit={addClient} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-stone-500 uppercase mb-1.5 ml-1">Nome Completo</label>
+                <input 
+                  autoFocus
+                  required
+                  type="text" 
+                  value={newName}
+                  onChange={e => setNewName(e.target.value)}
+                  placeholder="Ex: João Silva"
+                  className="w-full bg-stone-900 border border-white/5 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500/50 transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-stone-500 uppercase mb-1.5 ml-1">WhatsApp (com DDD)</label>
+                <input 
+                  required
+                  type="tel" 
+                  value={newPhone}
+                  onChange={e => setNewPhone(e.target.value)}
+                  placeholder="Ex: 11999999999"
+                  className="w-full bg-stone-900 border border-white/5 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500/50 transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-stone-500 uppercase mb-1.5 ml-1">Data do Último Corte</label>
+                <input 
+                  required
+                  type="date" 
+                  value={newDate}
+                  onChange={e => setNewDate(e.target.value)}
+                  className="w-full bg-stone-900 border border-white/5 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500/50 transition-all"
+                />
+              </div>
+              <div className="pt-4 flex gap-3">
+                <button 
+                  type="button" 
+                  onClick={() => setIsModalOpen(false)}
+                  className="flex-1 px-4 py-3 rounded-xl border border-white/5 text-stone-400 font-bold hover:bg-white/5 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  className="flex-1 bg-amber-500 hover:bg-amber-400 text-black px-4 py-3 rounded-xl font-bold transition-all active:scale-95 shadow-lg shadow-amber-500/10"
+                >
+                  Salvar Cliente
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
